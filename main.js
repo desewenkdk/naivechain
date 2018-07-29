@@ -8,6 +8,26 @@ var http_port = process.env.HTTP_PORT || 3001;
 var p2p_port = process.env.P2P_PORT || 6001;
 var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 
+
+/**
+ * temporary sturcture of transaction
+ */
+class transation {
+    constructor(sender, recipient, amount){
+        this.sender = sender,
+        this.recipient = recipient,
+        this.amount = amount
+    }
+};
+
+/**
+ * block structure :
+previous :  index / previous hash /timestamp/ data/ hash
+add :transaction set -> 일단 포함되는 transaction의 개수는 3개로 설계함.
+    nonce => caculate with POW
+    target value
+ *  */
+
 class Block {
     constructor(index, previousHash, timestamp, data, hash) {
         this.index = index;
@@ -15,6 +35,9 @@ class Block {
         this.timestamp = timestamp;
         this.data = data;
         this.hash = hash.toString();
+
+        this.transactions = memorypool_tmp;
+        memorypool_tmp = [];
     }
 }
 
@@ -25,7 +48,21 @@ var MessageType = {
     RESPONSE_BLOCKCHAIN: 2
 };
 
+
+//var coinbaseTransaction = () =>{
+//    return new transaction('0',);
+//}
+
+//memorypool size = 3;
+//reset when generate a new block
+var memorypool_tmp = new transaction[3];
+var add_new_transaction = (transaction) => {
+    memorypool_tmp.push(transaction);
+} 
+
 var getGenesisBlock = () => {
+    //make coin base transaction
+    add_new_transaction('0',0,1);
     return new Block(0, "0", 1465154705, "my genesis block!!", "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7");
 };
 
@@ -37,6 +74,9 @@ var initHttpServer = () => {
 
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
     app.post('/mineBlock', (req, res) => {
+        //make coinbase transaction
+        add_new_transaction('0',getLatestBlock().index,1);
+
         var newBlock = generateNextBlock(req.body.data);
         addBlock(newBlock);
         broadcast(responseLatestMsg());
