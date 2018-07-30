@@ -12,7 +12,7 @@ var initialPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
 /**
  * temporary sturcture of transaction
  */
-class transation {
+class transaction {
     constructor(sender, recipient, amount){
         this.sender = sender,
         this.recipient = recipient,
@@ -23,22 +23,60 @@ class transation {
 /**
  * block structure :
 previous :  index / previous hash /timestamp/ data/ hash
-add :transaction set -> 일단 포함되는 transaction의 개수는 3개로 설계함.
+add :transaction set -> 일단 포함되는 transaction의 개수는 3개로 설계함
+    -> merklehash는 3개의 transaction hash를 합한 것의 hash.
     nonce => caculate with POW
     target value
- *  */
 
-class Block {
-    constructor(index, previousHash, timestamp, data, hash) {
+Header : index, previousHash, timestamp, data, nonce,(merkelhash - not implemented)
+
+*/
+class BlockHeader{
+    constructor(index, previousHash, timestamp, data, hash, nonce) {
         this.index = index;
         this.previousHash = previousHash.toString();
         this.timestamp = timestamp;
         this.data = data;
-        this.hash = hash.toString();
-
+        this.hash = hash.toString(); 
         this.transactions = memorypool_tmp;
+        this.nonce = nonce;
+        
+        this.merkleHash = ()=>{
+            trasactionhashs;
+            for(var tx of transactions){
+                transactionhashs += (CryptoJS.SHA256(tx).toString());
+            }
+            return CryptoJS.SHA256(trasactionhashs).toString();
+        };
+    
+
+    }
+    
+}
+
+class Block {
+    constructor(index, previousHash, timestamp, data, hash, nonce) {
+        this.index = index;
+        this.previousHash = previousHash.toString();
+        this.timestamp = timestamp;
+        this.data = data;
+        this.hash = hash.toString(); 
+        this.nonce = nonce;
+        
+        //굳이 헤더를 따로??
+        this.BlockHeader  = new BlockHeader(index, previousHash, timestamp, data, hash, nonce);
+        this.transactions = memorypool_tmp;
+
         memorypool_tmp = [];
     }
+
+    addTransatcion(transaction){
+        transactions.push(transaction);
+        
+        //modify merklehash
+
+    }
+    
 }
 
 var sockets = [];
@@ -55,7 +93,7 @@ var MessageType = {
 
 //memorypool size = 3;
 //reset when generate a new block
-var memorypool_tmp = new transaction[3];
+var memorypool_tmp = [];
 var add_new_transaction = (transaction) => {
     memorypool_tmp.push(transaction);
 } 
@@ -63,7 +101,7 @@ var add_new_transaction = (transaction) => {
 var getGenesisBlock = () => {
     //make coin base transaction
     add_new_transaction('0',0,1);
-    return new Block(0, "0", 1465154705, "my genesis block!!", "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7");
+    return new Block(0, "0", 1465154705, "my genesis block!!", "816534932c2b7154836da6afc367695e6337db8a921823784c14378abed4f7d7",1234567);
 };
 
 var blockchain = [getGenesisBlock()];
@@ -74,9 +112,17 @@ var initHttpServer = () => {
 
     app.get('/blocks', (req, res) => res.send(JSON.stringify(blockchain)));
     app.post('/mineBlock', (req, res) => {
+        //time interval
+        /*
+        if(new Date().getTime()/1000 - getLatestBlock().timestamp < 100000){
+            console.log('Wait.......');
+        }
+        */
+
         //make coinbase transaction
         add_new_transaction('0',getLatestBlock().index,1);
 
+        //in generateNextBlock, make new hash, nonce
         var newBlock = generateNextBlock(req.body.data);
         addBlock(newBlock);
         broadcast(responseLatestMsg());
@@ -140,17 +186,27 @@ var generateNextBlock = (blockData) => {
     var previousBlock = getLatestBlock();
     var nextIndex = previousBlock.index + 1;
     var nextTimestamp = new Date().getTime() / 1000;
-    var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData);
-    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash);
+    var nextNonce = calculateNonce(previousBlock.nonce);
+
+    var nextHash = calculateHash(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextNonce);
+    
+    return new Block(nextIndex, previousBlock.hash, nextTimestamp, blockData, nextHash, nextNonce);
 };
 
-
+/**????*/
 var calculateHashForBlock = (block) => {
     return calculateHash(block.index, block.previousHash, block.timestamp, block.data);
 };
 
-var calculateHash = (index, previousHash, timestamp, data) => {
-    return CryptoJS.SHA256(index + previousHash + timestamp + data).toString();
+var calculateHash = (index, previousHash, timestamp, data, nonce) => {
+    return CryptoJS.SHA256(index + previousHash + timestamp + data + nonce).toString();
+};
+
+var calculateNonce = (previousNonce) => {
+    let v = 0;
+    while(CryptoJS.SHA256(v * previousNonce).toString().substring(0,3) !== "0000")
+        v++;
+    return v;
 };
 
 var addBlock = (newBlock) => {
